@@ -4,6 +4,7 @@ import Mathlib.Data.Set.Finite.Basic
 import Mathlib.Algebra.BigOperators.Group.Finset.Basic
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Tactic.Linarith
+import Mathlib.Data.List.Chain
 
 /-
 # Max-Flow Min-Cut Theorem Formalization Project
@@ -53,6 +54,46 @@ structure Cut (N : FlowNetwork V) where
 /-- The capacity of a cut is the sum of capacities of edges going from S to T. -/
 def cutCapacity (C : Cut N) : ℚ :=
   ∑ u ∈ C.S, ∑ v ∈ C.Sᶜ, N.capacity u v
+
+
+
+-- **some lemmas from weak_duality**
+-- extracted some lemmas from weak_duality to reuse in optimality_condition
+-- could also use them directly in weak_diality, whatever's better for readability
+omit [DecidableEq V] in
+lemma flow_out_eq_zero (fl : Flow N) (u : V) (h_src : u ≠ N.source) (h_sink : u ≠ N.sink) :
+    ∑ v, fl.f u v = 0 := by
+  have h_neg : ∑ v, fl.f u v = ∑ v, - fl.f v u := by
+    apply Finset.sum_congr rfl
+    intro v _
+    rw [fl.skew]
+  rw [h_neg, Finset.sum_neg_distrib, fl.conservation u h_src h_sink, neg_zero]
+
+omit [DecidableEq V] in
+lemma flow_internal_sum_zero (fl : Flow N) (S : Finset V) :
+    ∑ u ∈ S, ∑ v ∈ S, fl.f u v = 0 := by
+  let vol := ∑ u ∈ S, ∑ v ∈ S, fl.f u v
+  have h_vol_neg : vol = - vol := calc
+    vol = ∑ v ∈ S, ∑ u ∈ S, fl.f u v := Finset.sum_comm
+    _   = ∑ v ∈ S, ∑ u ∈ S, - fl.f v u := by
+            apply Finset.sum_congr rfl
+            intro v _
+            apply Finset.sum_congr rfl
+            intro u _
+            exact fl.skew u v
+    _   = - ∑ v ∈ S, ∑ u ∈ S, fl.f v u := by simp only [Finset.sum_neg_distrib]
+    _   = - vol := rfl
+  linarith
+
+lemma flow_sum_split (fl : Flow N) (C : Cut N) : ∑ u ∈ C.S, ∑ v, fl.f u v =
+                 (∑ u ∈ C.S, ∑ v ∈ C.S, fl.f u v) +
+                 (∑ u ∈ C.S, ∑ v ∈ C.Sᶜ, fl.f u v) := by
+    rw [← Finset.sum_add_distrib]
+    apply Finset.sum_congr rfl
+    intro u _
+    exact (Finset.sum_add_sum_compl C.S (fl.f u)).symm
+
+
 
 /-- **Weak Duality**: The value of any flow is ≤ capacity of any cut. -/
 theorem weak_duality (fl : Flow N) (C : Cut N) : fl.flowValue ≤ cutCapacity C := by
