@@ -163,14 +163,39 @@ def residualCapacity (fl : Flow N) (u v : V) : ℚ :=
 def isResidualEdge (fl : Flow N) (u v : V) : Prop :=
   residualCapacity fl u v > 0
 
-/-- Helper for augmentation logic (You will need to implement this).
-    A path is valid if every step is a residual edge. -/
+/-- Helper for augmentation logic -/
+-- A path is valid if it starts at source, ends at sink, and every edge has positive residual capacity.
 def isValidAugmentingPath (fl : Flow N) (path : List V) : Prop :=
-  sorry
+  path.head? = some N.source ∧
+  path.getLast? = some N.sink ∧
+  path.IsChain (isResidualEdge fl)
+
 
 /-- **Soundness**: Augmenting flow along a valid path preserves flow properties. -/
+-- Todo, instead of axioms
 def augmentFlow (fl : Flow N) (path : List V) (amount : ℚ) : Flow N :=
   sorry
+
+
+def pathContainsEdge (p : List V) (u v : V) : Bool :=
+      match p with
+      | [] => false
+      | [_] => false
+      | x :: y :: rest => (x == u && y == v) || pathContainsEdge (y :: rest) u v
+
+/-- For any valid augmenting path, there exists a positive bottleneck capacity. -/
+axiom exists_bottleneck :
+  ∀ (fl : Flow N) (path : List V),
+    isValidAugmentingPath fl path →
+    ∃ amount > 0, ∀ u v, pathContainsEdge path u v → amount ≤ residualCapacity fl u v
+
+/-- Augmenting along a path with amount ≤ bottleneck increases flow value by amount. -/
+axiom augmentFlow_increases_value :
+  ∀ (fl : Flow N) (path : List V) (amount : ℚ),
+    isValidAugmentingPath fl path →
+    (∀ u v, pathContainsEdge path u v → amount ≤ residualCapacity fl u v) →
+    0 < amount →
+    (augmentFlow fl path amount).flowValue = fl.flowValue + amount
 
 /-! ### 4. Optimality & Strong Duality -/
 
@@ -178,6 +203,32 @@ def augmentFlow (fl : Flow N) (path : List V) (amount : ℚ) : Flow N :=
     A flow is maximum iff no augmenting path exists in the residual graph. -/
 def hasAugmentingPath (fl : Flow N) : Prop :=
   ∃ path, isValidAugmentingPath fl path -- Simplify definition as needed
+
+/-- A vertex v is reachable if there is a valid chain of residual edges starting at source. -/
+def reachable (fl : Flow N) : Set V :=
+  { v | ∃ (path : List V), path.head? = some N.source ∧
+    path.getLast? = some v ∧
+    path.IsChain (isResidualEdge fl) }
+
+omit [DecidableEq V] in
+/-- Helper lemma: If u is reachable and (u,v) is a residual edge, then v is reachable. -/
+lemma reachable_extend {fl : Flow N} {u v : V}
+  (h_reachable : u ∈ reachable fl) (h_edge : isResidualEdge fl u v) : v ∈ reachable fl := by
+  obtain ⟨path, h_head, h_last, h_chain⟩ := h_reachable
+  use path ++ [v]
+  constructor
+  · -- Head remains source
+    cases path
+    · -- path is empty (impossible since head is source)
+      simp at h_head
+    · -- path is not empty
+      exact Option.mem_def.mp h_head
+  · constructor
+    · -- Last becomes v
+      simp
+    · -- Chain is preserved
+      rw [List.isChain_append]
+      aesop
 
 theorem optimality_condition (fl : Flow N) :
   (¬ hasAugmentingPath fl) ↔ ∀ fl' : Flow N, fl'.flowValue ≤ fl.flowValue := by
