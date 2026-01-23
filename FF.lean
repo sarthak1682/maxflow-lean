@@ -232,7 +232,83 @@ lemma reachable_extend {fl : Flow N} {u v : V}
 
 theorem optimality_condition (fl : Flow N) :
   (¬ hasAugmentingPath fl) ↔ ∀ fl' : Flow N, fl'.flowValue ≤ fl.flowValue := by
-  sorry
+
+  constructor
+
+  · intro h_no_path fl'
+    -- Construct the Cut S: The set of vertices reachable from Source
+    let S : Finset V := (reachable fl).toFinset
+
+    -- Prove S contains Source
+    have h_source_in : N.source ∈ S := by
+      rw [Set.mem_toFinset]
+      use [N.source]
+      aesop
+
+    -- Prove S does NOT contain Sink
+    have h_sink_not_in : N.sink ∉ S := by
+      rw [Set.mem_toFinset]
+      exact (Set.mem_compl_iff (reachable fl) N.sink).mp h_no_path
+
+    let C : Cut N := { S := S, source_in := h_source_in, sink_not_in := h_sink_not_in }
+
+    -- For this Cut: Flow = Capacity
+    -- If u ∈ S and v ∉ S, then (u,v) cannot be a residual edge.
+    -- Therefore, residualCapacity = 0 => capacity - flow = 0 => flow = capacity.
+    have h_saturated : fl.flowValue = cutCapacity C := by
+      have h_sat_edges : ∀ u ∈ C.S, ∀ v ∈ C.Sᶜ, fl.f u v = N.capacity u v := by
+        intro u h_u_reachable v h_v_not_reachable
+        rw [Set.mem_toFinset] at h_u_reachable
+        rw [Finset.mem_compl, Set.mem_toFinset] at h_v_not_reachable
+        by_contra h_neq
+        have h_lt : fl.f u v < N.capacity u v := lt_of_le_of_ne (fl.capacity_le u v) h_neq
+        have h_residual : isResidualEdge fl u v := by
+          simp [isResidualEdge, residualCapacity]
+          linarith
+        have h_v_reachable : v ∈ reachable fl := reachable_extend h_u_reachable h_residual
+        exact h_v_not_reachable h_v_reachable
+
+      -- Express flowValue as sum over S of total divergence at each u ∈ S
+      have h_val_eq_div_S : fl.flowValue = ∑ u ∈ C.S, ∑ v, fl.f u v := by
+        -- Split the sum over all vertices into source plus the rest of S, using that source ∈ S
+        rw [← Finset.sum_erase_add _ _ C.source_in]
+        have h_src_term : ∑ v, fl.f N.source v = fl.flowValue := rfl
+        rw [h_src_term]
+        simp
+        have h_rest_zero : ∑ u ∈ C.S.erase N.source, ∑ v, fl.f u v = 0 := by
+          apply Finset.sum_eq_zero
+          intro u hu
+          rw [Finset.mem_erase] at hu
+          have u_ne_sink : u ≠ N.sink := fun h => by
+            rw [h] at hu
+            exact C.sink_not_in hu.2
+          rw [@Rat.zero_iff_num_zero]
+          simp
+          apply flow_out_eq_zero fl u ?_ u_ne_sink
+          aesop
+        rw [h_rest_zero]
+
+      -- Decompose into internal (S→S) and crossing (S→Sᶜ) parts (as in weak_duality)
+      rw [h_val_eq_div_S, flow_sum_split fl C]
+      rw [flow_internal_sum_zero fl C.S, zero_add]
+      apply Finset.sum_congr rfl
+      intro u hu
+      apply Finset.sum_congr rfl
+      intro v hv
+      exact
+        Rat.ext (congrArg Rat.num (h_sat_edges u hu v hv))
+          (congrArg Rat.den (h_sat_edges u hu v hv))
+
+    rw [h_saturated]
+    exact weak_duality fl' C
+
+  · intro h h_has_path
+    obtain ⟨path, hvalid⟩ := h_has_path
+    obtain ⟨amount, h_amount_pos, h_amount_valid⟩ := exists_bottleneck fl path hvalid
+    have h_inc := augmentFlow_increases_value fl path amount hvalid h_amount_valid h_amount_pos
+    have h_le := h (augmentFlow fl path amount)
+    linarith
+
 
 /-- **Max-Flow Min-Cut Theorem (Strong Duality)**:
     There exists a flow f and a cut C such that their values are equal.
