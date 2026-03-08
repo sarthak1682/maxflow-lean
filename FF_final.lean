@@ -104,7 +104,20 @@ lemma flow_value_eq_crossing (fl : Flow N) (C : Cut N) :
 
   rw [h_internal, zero_add]
 
+
 /-- **Weak Duality**: The value of any flow is ≤ capacity of any cut. -/
+theorem weak_duality (fl : Flow N) (C : Cut N) : fl.flowValue ≤ cutCapacity C := by
+  rw[flow_value_eq_crossing fl C]
+  rw [cutCapacity]
+  apply Finset.sum_le_sum
+  intro u _
+  apply Finset.sum_le_sum
+  intro v _
+  exact fl.capacity_le u v
+
+
+/- 
+-- This is the original manual proof we did long ago, it was not meant to be a part of the final submission. 
 theorem weak_duality (fl : Flow N) (C : Cut N) : fl.flowValue ≤ cutCapacity C := by
   have h_out_zero : ∀ u, u ≠ N.source → u ≠ N.sink → ∑ v, fl.f u v = 0 := by
     intro u h_src h_sink
@@ -154,6 +167,8 @@ theorem weak_duality (fl : Flow N) (C : Cut N) : fl.flowValue ≤ cutCapacity C 
   apply Finset.sum_le_sum
   intro v _
   exact fl.capacity_le u v
+-/
+
 
 /-! ### 3. Residual Graph & Soundness -/
 
